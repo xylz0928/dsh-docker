@@ -1,0 +1,36 @@
+# 新用户 profile 覆盖层示例（~/.dsh/profiles/web/cordis.patch.yml）
+# dsh-docker 的 entrypoint 会在本文件之后再叠一层 /tmp/cordis.docker.patch.yml：
+#   webserver 的容器内监听 IP/端口、connection.trustedHosts 由环境变量推导，
+#   所以下面这两项**不用**在这里写；这里只放与机器无关的个人配置。
+#
+# 语法：顶层 YAML 数组；每个条目按 id 定位插件，config 为整对象覆盖（非合并）。
+
+# platform.deepseek.com 的 WAF 拦截非浏览器 User-Agent，直连 API 会被 429 + HTML 错误页
+# 打回，dsh 期望 JSON → 界面「登录失败」。浏览器 UA 实测 200。
+- id: deepseek-account
+  config:
+    requestHeaders:
+      User-Agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like
+        Gecko) Chrome/151.0.0.0 Safari/537.36"
+
+# 模型供应与默认模型：apiKeyEnv 指向的环境变量由设置 → 模型 页面写入（存 .credentials.yaml），
+# 也可以直接 export 到容器 environment。
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      openai-compatible:
+        apiKeyEnv: MY_LLM_API_KEY
+        models:
+          - id: example-model
+            name: Example Model
+            contextWindow: 131072
+            maxTokens: 65536
+            input:
+              - text
+
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: openai-compatible
+    model: example-model

@@ -1,0 +1,66 @@
+# dsh-docker — Portainer stack / docker compose 部署定义
+#
+# 端口策略：本环境不向外部暴露端口 —— 反代（nginxwebui）经 webs 网络直连容器名 dsh:3081，
+# 仅在宿主回环上保留一个调试端口。其他用户可按需把下面 ports 改成
+#   - "3081:3081"             # 局域网直接暴露
+#   - "192.168.1.100:3081:3081" # 只绑某块网卡
+# 或删掉 ports 整段、同样只走所在网络的容器名。
+name: dsh
+
+services:
+  dsh:
+    image: ghcr.io/xylz0928/dsh-docker:${DSH_IMAGE_TAG:-latest}
+    container_name: dsh
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DSH_INJECTOR_PORT:-3081}:3081"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 自己的反代链接：dsh 用它生成对外地址；受信 authority 自动从它推导
+      DSH_PUBLIC_URL: ${DSH_PUBLIC_URL:-}
+      # 额外受信 authority（逗号/空格分隔），如直连地址 dsh.local:3081
+      DSH_TRUSTED_HOSTS: ${DSH_TRUSTED_HOSTS:-}
+      DSH_WEB_PORT: "3080"
+      DSH_INJECTOR_PORT: "3081"
+      # 宿主上实际发布的调试端口（仅用于设置页「开放的端口」展示）
+      DSH_PUBLISHED_BIND: ${DSH_PUBLISHED_BIND:-127.0.0.1:3081}
+    volumes:
+      # HOME 骨架：.config（dingtalk 等）、git 凭据、ssh config/known_hosts
+      - dsh-config:/home/dsh
+      # 会话历史 / 设置 / DSH 凭据（api key）/ skills / profiles
+      - dsh-data:/home/dsh/.dsh
+      # 插件目录单独管理
+      - dsh-plugins:/home/dsh/.dsh/plugins
+      # 宿主 dhost 的 root SSH key：容器内 git/ssh 以此身份访问远端（不迁移旧机器的 key）。
+      # 必须挂 /root/.ssh —— ssh 展开 ~ 用 passwd 的 root 家目录，不认 $HOME=/home/dsh。
+      - /root/.ssh/id_rsa:/root/.ssh/id_rsa:ro
+      - /root/.ssh/id_rsa.pub:/root/.ssh/id_rsa.pub:ro
+      # known_hosts 只作只读种子：容器本地 /root/.ssh/known_hosts 由 entrypoint 拷贝初始化
+      # （ssh 更新 known_hosts 用 rename，落在 bind mount 文件上会 EXDEV 失败）
+      - /root/.ssh/known_hosts:/root/.ssh/dhost-known-hosts:ro
+      # 项目数据 = 容器工作目录
+      - /mnt/docker-files/dsh/workspace:/workspace
+      # 兼容迁移会话与 skill 里的 ~/coding 路径（不需要可删）
+      - /mnt/docker-files/dsh/workspace:/home/dsh/coding
+      # 可选：与 TZ 二选一，挂宿主 localtime
+      # - /etc/localtime:/etc/localtime:ro
+    networks:
+      - webs
+
+networks:
+  webs:
+    name: webs
+    external: true
+
+volumes:
+  # external：数据卷不由 compose 创建/删除 —— 误操作 remove stack -v 不会带走数据；
+  # 首次部署先 `docker volume create dsh-config dsh-data dsh-plugins`（migrate.sh 会建）。
+  dsh-config:
+    name: dsh-config
+    external: true
+  dsh-data:
+    name: dsh-data
+    external: true
+  dsh-plugins:
+    name: dsh-plugins
+    external: true
