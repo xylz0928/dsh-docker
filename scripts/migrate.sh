@@ -36,6 +36,7 @@ echo "== 1. dhost：卷与目录 =="
 run_dhost 'docker volume create dsh-config >/dev/null
            docker volume create dsh-data >/dev/null
            docker volume create dsh-plugins >/dev/null
+           docker volume create dsh-skills >/dev/null
            mkdir -p /mnt/docker-files/dsh/workspace
            echo "   volumes ok"'
 
@@ -45,10 +46,10 @@ if [[ "$FINAL" == "1" ]]; then
   # 直接覆盖会把同一会话拆进两个目录，必须先清再全量重灌；profiles 保留目标侧
   # 已装的 dsh-docker 插件与 store 重链状态。
   run_dhost "docker run --rm -v dsh-data:/target $IMAGE sh -c 'rm -rf /target/sessions /target/storages'"
-  tar -C "$HOME/.dsh" --exclude='./plugins' --exclude='./profiles' -cf - . \
+  tar -C "$HOME/.dsh" --exclude='./plugins' --exclude='./skills' --exclude='./profiles' -cf - . \
     | run_dhost "docker run --rm -i -v dsh-data:/target $IMAGE tar -C /target -xf -"
 else
-  tar -C "$HOME/.dsh" --exclude='./plugins' -cf - . \
+  tar -C "$HOME/.dsh" --exclude='./plugins' --exclude='./skills' -cf - . \
     | run_dhost "docker run --rm -i -v dsh-data:/target $IMAGE tar -C /target -xf -"
 fi
 echo "   done"
@@ -56,6 +57,11 @@ echo "   done"
 echo "== 3. ~/.dsh/plugins → dsh-plugins =="
 tar -C "$HOME/.dsh/plugins" -cf - . \
   | run_dhost "docker run --rm -i -v dsh-plugins:/target $IMAGE tar -C /target -xf -"
+echo "   done"
+
+echo "== 3b. ~/.dsh/skills → dsh-skills（独立卷，供其它 Agent 容器共用）=="
+tar -C "$HOME/.dsh/skills" -cf - . \
+  | run_dhost "docker run --rm -i -v dsh-skills:/target $IMAGE tar -C /target -xf -"
 echo "   done"
 
 echo "== 4. HOME 骨架 → dsh-config（不含 .ssh）=="

@@ -31,6 +31,9 @@ services:
       - dsh-data:/home/dsh/.dsh
       # 插件目录单独管理
       - dsh-plugins:/home/dsh/.dsh/plugins
+      # skill 独立卷：卷根即 skills 目录内容（每个子目录一个 skill），
+      # 同宿主其它 AI Agent 容器可用 external 名 dsh-skills 挂去共用
+      - dsh-skills:/home/dsh/.dsh/skills
       # 宿主 dhost 的 root SSH key：容器内 git/ssh 以此身份访问远端（不迁移旧机器的 key）。
       # 必须挂 /root/.ssh —— ssh 展开 ~ 用 passwd 的 root 家目录，不认 $HOME=/home/dsh。
       - /root/.ssh/id_rsa:/root/.ssh/id_rsa:ro
@@ -63,4 +66,7 @@ volumes:
     external: true
   dsh-plugins:
     name: dsh-plugins
+    external: true
+  dsh-skills:
+    name: dsh-skills
     external: true

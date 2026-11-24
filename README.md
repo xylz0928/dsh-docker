@@ -36,7 +36,7 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
 
    ```bash
    mkdir -p /mnt/docker-files/dsh/workspace
-   docker volume create dsh-config dsh-data dsh-plugins
+   docker volume create dsh-config dsh-data dsh-plugins dsh-skills
    ```
 
 2. 部署为 Portainer stack（三选一）：
@@ -69,6 +69,7 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
 | `dsh-config:/home/dsh` | HOME 骨架：`.config`（钉钉等）、git 凭据、ssh config/known_hosts |
 | `dsh-data:/home/dsh/.dsh` | **会话历史**、设置、DSH 凭据（api key）、skills、profiles |
 | `dsh-plugins:/home/dsh/.dsh/plugins` | 插件，单独管理 |
+| `dsh-skills:/home/dsh/.dsh/skills` | skill 独立卷（卷根 = skills 目录内容），供其它 Agent 容器共用 |
 | `/root/.ssh/id_rsa(.pub)`（ro）+ `/root/.ssh/dhost-known-hosts`（ro 种子）—— 必须挂 /root/.ssh（ssh 展开 ~ 用 passwd 家目录，不认 $HOME）；容器本地 known_hosts 由种子初始化，否则 ssh 的 rename 更新在 bind mount 上 EXDEV 失败、学习不落盘 | **宿主 root 的 SSH key**，容器内 git/ssh 以此身份访问远端 |
 
 > **密钥边界**：仓库与镜像不携带任何密钥内容。私钥由各环境在 compose 里挂载自己的
@@ -79,6 +80,26 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
 | 同上 → `/home/dsh/coding`、`/home/zed/coding/docker` | 兼容迁移会话与 skill 里的旧路径（不需要可删） |
 
 改挂载/端口/环境变量后在 Portainer 里 Update the stack 即可；数据卷不受镜像更新影响。
+
+### 与其他 AI Agent 容器共用 skills
+
+`dsh-skills` 卷的**根就是 skills 目录内容**（每个子目录一个 skill，含 `SKILL.md`），
+同宿主其它 AI Agent 容器以 external 名引用即可只读/读写共用：
+
+```yaml
+services:
+  other-agent:
+    image: ...
+    volumes:
+      - dsh-skills:/path/its/skills:ro   # 挂到该 Agent 读取 skill 的路径
+volumes:
+  dsh-skills:
+    external: true
+    name: dsh-skills
+```
+
+DSH 系容器挂到 `$HOME/.dsh/skills`（或其 `DSH_HOME/skills`）即与本实例完全同源；
+注意 `DSH_HOME` 若与本容器不同，需按对方约定的 skill 目录结构挂载。
 
 ## 设置页「Docker DSH」
 
