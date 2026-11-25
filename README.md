@@ -9,7 +9,7 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
 
 | 位置 | 示例 | 说明 |
 |---|---|---|
-| 镜像 tag | `ghcr.io/xylz0928/dsh-docker:1.0.5-dsh0.2.2-rc.5` | `<打包版本>-dsh<官方版本>`，另有 `latest` 指向最新构建 |
+| 镜像 tag | `ghcr.io/xylz0928/dsh-docker:1.0.6-dsh0.2.2-rc.5` | `<打包版本>-dsh<官方版本>`，另有 `latest` 指向最新构建 |
 | OCI 标签 | `org.opencontainers.image.version=1.0.0`、`io.dsh.official-version=0.2.2-rc.5`、`io.dsh.revision=<git sha>` | `docker inspect` 直接可见 |
 | 设置页 | 设置 → 最下方「Docker DSH」分区 | 镜像版本 / 打包官方版本 / 运行中版本 / 检查官方最新版按钮 |
 
@@ -18,7 +18,7 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
 ## 架构
 
 ```
-浏览器 → 反代(nginxwebui, 20443) → webs 网络 → dsh:3081 注入代理 → dsh:3080 dsh web
+浏览器 → 反代(nginxwebui, 20443) → <宿主IP>:3081 注入代理 → <宿主IP>:3080 dsh web（network_mode: host，与宿主共网络栈）
                                                    ↑
                               容器内捕获 dsh 的 launch token，自动完成 ?token= 换 cookie
 ```
@@ -44,8 +44,8 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
    - 脚本走 API（创建或更新同名 stack，可重复执行）：
      `PORTAINER_URL=... PORTAINER_TOKEN=... ./scripts/portainer-deploy.sh`；
    - 宿主上 `docker compose --env-file .env up -d`（不进 Portainer，仅调试用）。
-3. 反代（nginxwebui）新建站点 `https://<你的域名>:<端口>`，反代目标填容器：
-   `http://dsh:3081`（与本 stack 同处 `webs` 网络时直接走容器名；不同网络则用宿主 IP + 映射端口）。
+3. 反代（nginxwebui）新建站点 `https://<你的域名>:<端口>`，反代目标填宿主：
+   `http://<宿主IP>:3081`（host 网络下没有容器名 DNS，`http://dsh:3081` 不可用）。
 4. 打开反代地址，注入代理会自动完成登录换 cookie。
 
 ### 环境变量
@@ -58,7 +58,7 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
 | `TZ` | `Asia/Shanghai` | 容器时区；也可改用 compose 中注释掉的 `/etc/localtime` 挂载 |
 | `DSH_WEB_PORT` | `3080` | dsh web 容器内端口 |
 | `DSH_INJECTOR_PORT` | `3081` | 注入代理容器内端口（反代目标端口） |
-| `DSH_PUBLISHED_BIND` | `127.0.0.1:3081` | 宿主实际发布的端口，仅用于设置页展示 |
+| `DSH_PUBLISHED_BIND` | `<宿主IP>:3081`（local.env 提供） | 宿主可达地址，仅用于设置页展示 |
 | `DSH_WEB_HOST` | 自动探测 | 容器内 dsh 绑定 IP，一般不用设 |
 | `DSH_NPM_REGISTRY` | `https://registry.npmjs.org` | 「检查官方版本」按钮查询的 npm 源 |
 
@@ -76,8 +76,8 @@ Portainer stack（compose）管理，经反代对外提供服务，数据全部�
 > 宿主 `/root/.ssh`；“哪台节点信任这把钥匙”是**每套部署各自的本地动作**——把你自己
 > 宿主的公钥追加到目标节点的 `authorized_keys`（OpenWrt 在 `/etc/dropbear/authorized_keys`），
 > 镜像升级不会、也不应该触及这层信任关系。
-| `/mnt/docker-files/dsh/workspace` → `/workspace` | **项目数据** = 容器工作目录 |
-| 同上 → `/home/dsh/coding`、`/home/zed/coding/docker` | 兼容迁移会话与 skill 里的旧路径（不需要可删） |
+| `/mnt/docker-files/dsh/workspace` → `/home/dsh/coding` | **项目数据** = 容器工作目录（`~/coding`） |
+| 同上 → `/home/zed/coding/docker` | 兼容迁移会话与 skill 里的旧路径（不需要可删） |
 
 改挂载/端口/环境变量后在 Portainer 里 Update the stack 即可；数据卷不受镜像更新影响。
 
@@ -123,8 +123,8 @@ dsh 的 DeepSeek 账号 OAuth **只接受回环 origin**（`loginOrigin()` 仅�
 ```
 
 浏览器打开 `http://localhost:3080/` → 页面内登录 → 关闭隧道。
-（浏览器若直接跑在 dhost 上，也可开 `http://127.0.0.1:3081/` —— compose 把注入代理
-发布在宿主回环 `127.0.0.1:3081`。）
+（浏览器若直接跑在宿主上，也可开 `http://127.0.0.1:3081/` —— host 网络下注入代理
+监听宿主 `0.0.0.0:3081`，回环天然可达。）
 
 登录态（grant）存服务端 `~/.dsh/.credentials.yaml`，登录一次后 `https://你的域名`
 各入口自动生效：注入代理会为每个 authority 自动完成 launch-token 换 cookie。
@@ -137,9 +137,9 @@ dsh 的 DeepSeek 账号 OAuth **只接受回环 origin**（`loginOrigin()` 仅�
 > 会在 `startSignIn` 处被 protocol 拒绝 —— 登录那一步地址栏必须是
 > `http://localhost:<任意端口>`。LAN 端口只能当“设备本机回环垫片”的目标端。
 
-### 应急：某台设备没有 ssh 客户端时（临时开 LAN 口 + 本机垫片）
+### 应急：某台设备没有 ssh 客户端时（本机垫片）
 
-1. 临时把 compose 的 ports 改为 `- "3081:3081"`（或绑 LAN IP）并 Update stack；
+1. 无需改 compose——host 网络下注入代理常驻监听宿主 `0.0.0.0:3081`，局域网天然可达；
 2. 该设备本机做回环转发，把 `localhost:3080` 送到 `your-dhost:3081`：
    - Windows 10+（管理员 cmd，零安装）：
      ```
@@ -147,10 +147,11 @@ dsh 的 DeepSeek 账号 OAuth **只接受回环 origin**（`loginOrigin()` 仅�
      ```
      登完删除：`netsh interface portproxy delete v4tov4 listenport=3080 listenaddress=127.0.0.1`
    - Linux/Mac：`socat TCP-LISTEN:3080,fork,bind=127.0.0.1 TCP:192.168.1.100:3081`
-3. 浏览器开 `http://localhost:3080/` 登录 → 关垫片 → **把 ports 改回 `127.0.0.1:3081:3081`**。
+3. 浏览器开 `http://localhost:3080/` 登录 → 关垫片即可。
 
-⚠️ LAN 可达期间，局域网任何设备都能免密直进 dsh（launch-token 自动交换，
-tinyauth 只在反代层）——所以只在登录窗口临时开，登完立即收回。
+⚠️ host 网络下注入代理常驻监听宿主 `0.0.0.0:3081`：局域网设备直连它会自动完成
+launch-token 换 cookie（launch-token 门禁只挡“绕过注入代理直打 3080”的路径）。
+这是 host 网络方案的固有面（与旧环境一致），只信任你自己的局域网。
 
 ## 升级
 
@@ -184,7 +185,7 @@ entrypoint 中的重放行即可。
    启动时自动重算，其余全部自动跟随：`verify.sh` 从容器 env 推导期望 Host、
    设置页实时展示受信列表、launch URL 按新 public-url 生成。
    过渡期新旧域名并存：追加 `DSH_TRUSTED_HOSTS=旧域名,旧域名:20443`。
-2. 反代（nginxwebui）：新域名站点 `proxy_pass http://dsh:3081`；旧站点随后删除。
+2. 反代（nginxwebui）：新域名站点 `proxy_pass http://<宿主IP>:3081`；旧站点随后删除。
 3. skill 中的 GUI 地址以 stack Env 的 `DSH_PUBLIC_URL` 为准，无需逐处改。
 
 ## 目录

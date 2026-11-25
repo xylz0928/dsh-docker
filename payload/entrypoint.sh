@@ -28,6 +28,16 @@ LOG_FILE="/tmp/dsh-web.log"
 OVERLAY="/tmp/cordis.docker.patch.yml"
 
 # ---------------------------------------------------------------- 1. 监听地址
+# 优先取默认路由网卡的地址：host 网络模式下 scope global 还包含 docker0/br-*
+# 等172.x 桥接地址，盲目取第一个会把 dsh 绑到桥接 IP 导致局域网不可达。
+if [[ -z "$DSH_WEB_HOST" ]]; then
+  DEV="$(ip -4 route show default 2>/dev/null \
+    | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')"
+  if [[ -n "$DEV" ]]; then
+    DSH_WEB_HOST="$(ip -4 -o addr show dev "$DEV" scope global 2>/dev/null \
+      | awk '{ split($4, a, "/"); print a[1] }' | head -n1 || true)"
+  fi
+fi
 if [[ -z "$DSH_WEB_HOST" ]]; then
   DSH_WEB_HOST="$(ip -4 -o addr show scope global 2>/dev/null \
     | awk '{ split($4, a, "/"); print a[1] }' | head -n1 || true)"
